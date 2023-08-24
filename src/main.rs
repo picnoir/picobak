@@ -64,33 +64,31 @@ fn main() {
 /// If no datetime EXIF data is attached to the file, use the file
 /// last modification date.
 fn get_picture_datetime(file_path: &str, file: &File) -> DateTime<Utc> {
+    let exif_datetime = get_picture_exif_datetime(file);
+    exif_datetime.unwrap_or_else(|| get_file_modified_time(file_path, file))
+}
+
+/// Retrieves the picture EXIF datetime.
+fn get_picture_exif_datetime(file: &File) -> Option<DateTime<Utc>> {
     let mut bufreader = std::io::BufReader::new(file);
     let exifreader = exif::Reader::new();
     let exif = exifreader.read_from_container(&mut bufreader);
-    match exif {
-        Ok(exif) => {
-            match exif.get_field(Tag::DateTimeOriginal, In::PRIMARY) {
-                Some(datetime_field) => {
+    exif.map(
+        |exif| {
+            exif.get_field(Tag::DateTimeOriginal, In::PRIMARY).and_then(
+                |datetime_field| {
                     match datetime_field.value {
                         Value::Ascii(ref vec) if !vec.is_empty() => {
                             // Meh… I know…
                             let str_date = String::from_utf8(vec[0].to_vec()).unwrap();
-                            if let Ok(naive_datetime) = NaiveDateTime::parse_from_str(&str_date, "%Y:%m:%d %H:%M:%S") {
-                                DateTime::from_utc(naive_datetime, Utc)
-                            } else {
-                                panic!("ERROR: incorrect datetime format for file {}", file_path)
-                            }
+                            NaiveDateTime::parse_from_str(&str_date, "%Y:%m:%d %H:%M:%S")
+                                .map(|naive_datetime| DateTime::from_utc(naive_datetime, Utc))
+                                .ok()
                         }
-                        _ =>
-                            panic!("ERROR: cannot parse ASCII from datetime EXIF field for file {}", file_path)
+                        _ => None
                     }
-                },
-                // There's no EXIF datetime field. Let's use the file creation time.
-                None => get_file_modified_time(file_path, file)
-            }
-        },
-        Err(_e) => get_file_modified_time(file_path, file)
-    }
+                })
+        }).ok().flatten()
 }
 
 /// If we cannot load the EXIF creation datetime, we end up using the
