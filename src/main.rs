@@ -24,16 +24,27 @@ fn main() {
     if !cli.dry_run {
         validate_args(&cli);
     }
+    let stdin = std::io::stdin();
+    for line in stdin.lines() {
+        backup_one_file(&cli, &line.unwrap());
+    }
+}
 
-    let filename = Path::new(&cli.file_path);
-    let file = File::open(filename).unwrap_or_else(|_| panic!("ERROR: cannot open the {} file", &cli.file_path));
-    let datetime = get_picture_datetime(&cli.file_path, &file);
+/// Backup a file.
+fn backup_one_file(cli: &CliArgs, file_path: &str) {
+    let filename = Path::new(file_path);
+    let file = File::open(filename).unwrap_or_else(
+        |_| panic!("ERROR: cannot open the {} file", file_path)
+    );
+    let datetime = get_picture_datetime(file_path, &file);
     let picture_dir = find_backup_dir(&cli.backup_root, &datetime);
 
     if !picture_dir.exists() {
         if !cli.dry_run {
             create_dir_all(&picture_dir)
-                .unwrap_or_else(|_| panic!("ERROR: cannot create directory at {}", &picture_dir.display()));
+                .unwrap_or_else(
+                    |_| panic!("ERROR: cannot create directory at {}", &picture_dir.display())
+                );
         } else {
             eprintln!("Would mkdir {}", &picture_dir.display());
         }
@@ -41,9 +52,9 @@ fn main() {
         panic!("ERROR: {} already exists and is not a directory", &picture_dir.display())
     }
 
-    let target_filename = picture_dir
-        .join(filename.file_name()
-              .unwrap_or_else(|| panic!("Error: Incorrect file name {}", filename.display())));
+    let filename_name = filename.file_name()
+        .unwrap_or_else(|| panic!("Error: Incorrect file name {}", filename.display()));
+    let target_filename = picture_dir.join(filename_name);
     if !target_filename.is_file() {
         if !cli.dry_run {
             copy(filename, &target_filename)
@@ -72,23 +83,18 @@ fn get_picture_datetime(file_path: &str, file: &File) -> DateTime<Utc> {
 fn get_picture_exif_datetime(file: &File) -> Option<DateTime<Utc>> {
     let mut bufreader = std::io::BufReader::new(file);
     let exifreader = exif::Reader::new();
-    let exif = exifreader.read_from_container(&mut bufreader);
-    exif.map(
-        |exif| {
-            exif.get_field(Tag::DateTimeOriginal, In::PRIMARY).and_then(
-                |datetime_field| {
-                    match datetime_field.value {
-                        Value::Ascii(ref vec) if !vec.is_empty() => {
-                            // Meh… I know…
-                            let str_date = String::from_utf8(vec[0].to_vec()).unwrap();
-                            NaiveDateTime::parse_from_str(&str_date, "%Y:%m:%d %H:%M:%S")
-                                .map(|naive_datetime| DateTime::from_utc(naive_datetime, Utc))
-                                .ok()
-                        }
-                        _ => None
-                    }
-                })
-        }).ok().flatten()
+    let exif = exifreader.read_from_container(&mut bufreader).ok()?;
+    let datetime_field = exif.get_field(Tag::DateTimeOriginal, In::PRIMARY)?;
+    match datetime_field.value {
+        Value::Ascii(ref vec) if !vec.is_empty() => {
+            // Meh… I know…
+            let str_date = String::from_utf8(vec[0].to_vec()).unwrap();
+            NaiveDateTime::parse_from_str(&str_date, "%Y:%m:%d %H:%M:%S")
+                .map(|naive_datetime| DateTime::from_utc(naive_datetime, Utc))
+                .ok()
+        },
+        _ => None
+    }
 }
 
 /// If we cannot load the EXIF creation datetime, we end up using the
