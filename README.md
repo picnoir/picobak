@@ -1,5 +1,7 @@
 # Picobak
 
+**WARNING:** this program hasn't properly been tested yet. Use with extreme caution. It might eat your kittens for now!!
+
 Picobak is a small CLI utility to help you backup and organize your pictures on a filesystem. It uses the pictures [EXIF](https://en.wikipedia.org/wiki/Exif) metadata to store the files in a `year/month/day` directory tree like this:
 
 ```txt
@@ -23,7 +25,16 @@ This program is heavily inspired by Shotwell's backup feature. I actually used t
 Overall:
 
 ```txt
-picobak BACKUP_ROOT PICTURE_TO_BACKUP
+Usage: pictures-backup [OPTIONS] <BACKUP_ROOT> <FILE_PATH>
+
+Arguments:
+  <BACKUP_ROOT>  Pictures library directory
+  <FILE_PATH>    Picture to backup
+
+Options:
+  -d, --dry-run  Do not create any directory or copy any file. Only prints out the operations it would perform
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 You can couple this tool with [GNU parallel](https://www.gnu.org/software/parallel/) to concurently backup multiple images and fully utilize a multicore system:

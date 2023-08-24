@@ -2,7 +2,10 @@
 name = "pictures-backup"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = [ "Ninjatrappeur <ninjatrappeur@alternativebit.fr>" ]
+license = "GPL-3.0"
+repository = "https://git.alternativebit.fr/NinjaTrappeur/picobak"
 
 [dependencies]
+clap = { version = "4.3.24", features = ["derive"] }
+kamadak-exif = "0.5.5"
