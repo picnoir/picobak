@@ -1,5 +1,5 @@
 [package]
-name = "pictures-backup"
+name = "picobak"
 version = "0.1.0"
 edition = "2021"
 authors = [ "Ninjatrappeur <ninjatrappeur@alternativebit.fr>" ]
@@ -7,5 +7,10 @@ license = "GPL-3.0"
 repository = "https://git.alternativebit.fr/NinjaTrappeur/picobak"
 
 [dependencies]
+chrono = { version = "0.4.26", features = ["clock"] }
 clap = { version = "4.3.24", features = ["derive"] }
 kamadak-exif = "0.5.5"
+
+[profile.release]
+strip = true
+lto = true

@@ -3,7 +3,8 @@ use std::{fs::File, path::PathBuf};
 use std::path::Path;
 
 use clap::Parser;
-use exif::{Tag, In, Value, DateTime};
+use exif::{Tag, In, Value};
+use chrono::{Utc, DateTime, Datelike, NaiveDateTime};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -25,16 +26,16 @@ fn main() {
     }
 
     let filename = Path::new(&cli.file_path);
-    let file = File::open(&filename).expect(&format!("ERROR: cannot open the {} file", &cli.file_path));
+    let file = File::open(filename).unwrap_or_else(|_| panic!("ERROR: cannot open the {} file", &cli.file_path));
     let datetime = get_picture_datetime(&cli.file_path, &file);
     let picture_dir = find_backup_dir(&cli.backup_root, &datetime);
 
     if !picture_dir.exists() {
         if !cli.dry_run {
             create_dir_all(&picture_dir)
-                .expect(&format!("ERROR: cannot create directory at {}", &picture_dir.display()));
+                .unwrap_or_else(|_| panic!("ERROR: cannot create directory at {}", &picture_dir.display()));
         } else {
-            eprint!("Would mkdir {}", &picture_dir.display());
+            eprintln!("Would mkdir {}", &picture_dir.display());
         }
     } else if !picture_dir.is_dir() {
         panic!("ERROR: {} already exists and is not a directory", &picture_dir.display())
@@ -42,52 +43,74 @@ fn main() {
 
     let target_filename = picture_dir
         .join(filename.file_name()
-              .expect(&format!("Error: Incorrect file name {}", filename.display())));
+              .unwrap_or_else(|| panic!("Error: Incorrect file name {}", filename.display())));
     if !target_filename.is_file() {
         if !cli.dry_run {
-            copy(&filename, &target_filename)
-                .expect(&format!("ERROR: cannot copy {} to {}", &filename.display(), &target_filename.display()));
+            copy(filename, &target_filename)
+                .unwrap_or_else(|_| panic!("ERROR: cannot copy {} to {}", &filename.display(), &target_filename.display()));
         } else {
-            eprint!("Would copy {} to {}", filename.display(), target_filename.display());
+            eprintln!("Would copy {} to {}", filename.display(), target_filename.display());
         }
+    } else if same_files(filename, &target_filename) {
+        eprintln!("File already archived: {}", &filename.display())
     } else {
-        if same_files(&filename, &target_filename) {
-            eprint!("File already archived: {}", &filename.display())
-        } else {
-            panic!("ERROR: {} already exists in {}, but the two files are different",
-                   &filename.display(),
-                   &target_filename.display())
-        }
+        panic!("ERROR: {} already exists in {}, but the two files are different",
+               &filename.display(),
+               &target_filename.display())
     }
 }
 
 /// Retrieves when the picture has been shot from the EXIF metadata.
-fn get_picture_datetime(file_path: &str, file: &File) -> DateTime {
+/// If no datetime EXIF data is attached to the file, use the file
+/// last modification date.
+fn get_picture_datetime(file_path: &str, file: &File) -> DateTime<Utc> {
     let mut bufreader = std::io::BufReader::new(file);
     let exifreader = exif::Reader::new();
-    let exif = exifreader.read_from_container(&mut bufreader)
-        .expect(&format!("ERROR: cannot read EXIF metadata for picture {}", file_path));
-    let datetime_field = exif.get_field(Tag::DateTimeOriginal, In::PRIMARY)
-        .expect(&format!("ERROR: missing datetime tag for picture {}", file_path));
-    match datetime_field.value {
-        Value::Ascii(ref vec) if !vec.is_empty() =>
-            if let Ok(datetime) = DateTime::from_ascii(&vec[0]) {
-                datetime
-            } else {
-                panic!("ERROR: incorrect datetime format for file {}", file_path)
+    let exif = exifreader.read_from_container(&mut bufreader);
+    match exif {
+        Ok(exif) => {
+            match exif.get_field(Tag::DateTimeOriginal, In::PRIMARY) {
+                Some(datetime_field) => {
+                    match datetime_field.value {
+                        Value::Ascii(ref vec) if !vec.is_empty() => {
+                            // Meh… I know…
+                            let str_date = String::from_utf8(vec[0].to_vec()).unwrap();
+                            if let Ok(naive_datetime) = NaiveDateTime::parse_from_str(&str_date, "%Y:%m:%d %H:%M:%S") {
+                                DateTime::from_utc(naive_datetime, Utc)
+                            } else {
+                                panic!("ERROR: incorrect datetime format for file {}", file_path)
+                            }
+                        }
+                        _ =>
+                            panic!("ERROR: cannot parse ASCII from datetime EXIF field for file {}", file_path)
+                    }
+                },
+                // There's no EXIF datetime field. Let's use the file creation time.
+                None => get_file_modified_time(file_path, file)
             }
-        _ =>
-            panic!("ERROR: cannot parse ASCII from datetime EXIF field for file {}", file_path)
+        },
+        Err(_e) => get_file_modified_time(file_path, file)
     }
 }
 
-/// Directory in which we want to save the picture.
-fn find_backup_dir(backup_root: &str, datetime: &DateTime) -> PathBuf {
+/// If we cannot load the EXIF creation datetime, we end up using the
+/// last modified time of the file.
+fn get_file_modified_time(file_path: &str, file: &File) -> DateTime<Utc> {
+    eprintln!("No EXIF information available for {}, falling back to file mtime.", file_path);
+    let systemtime = file.metadata()
+        .unwrap_or_else(|_| panic!("Cannot retrieve UNIX file metadata for {}", file_path))
+        .modified()
+        .unwrap_or_else(|_| panic!("Cannot retrieve modified time for {}", file_path));
+    systemtime.into()
+}
+
+/// Return directory in which we want to save the picture.
+fn find_backup_dir(backup_root: &str, datetime: &DateTime<Utc>) -> PathBuf {
     let backup_root = Path::new(backup_root);
     backup_root
-        .join(datetime.year.to_string())
-        .join(datetime.month.to_string())
-        .join(datetime.day.to_string())
+        .join(format!("{:04}", datetime.year()))
+        .join(format!("{:02}", datetime.month()))
+        .join(format!("{:02}", datetime.day()))
 }
 
 /// Sanity function making sure the user did not give us complete
@@ -106,16 +129,16 @@ fn validate_args(args: &CliArgs) {
 /// two pictures have the same EXIF data, the same size and the same
 /// creation date, they're the same.
 fn same_files(source: &Path, target: &Path) -> bool {
-    let source_file = File::open(&source)
-        .expect(&format!("Error: cannot open file {}", &source.display()))
+    let source_file = File::open(source)
+        .unwrap_or_else(|_| panic!("Error: cannot open file {}", &source.display()))
         .metadata()
-        .expect(&format!("Error: cannot get metadata of  file {}", &source.display()));
-    let target_file = File::open(&target)
-        .expect(&format!("Error: cannot open file {}", &target.display()))
+        .unwrap_or_else(|_| panic!("Error: cannot get metadata of  file {}", &source.display()));
+    let target_file = File::open(target)
+        .unwrap_or_else(|_| panic!("Error: cannot open file {}", &target.display()))
         .metadata()
-        .expect(&format!("Error: cannot get metadata of  file {}", &target.display()));
-    let source_created = source_file.created().expect(&format!("ERROR: cannot find created datetime for {}", &source.display()));
-    let target_created = target_file.created().expect(&format!("ERROR: cannot find created datetime for {}", &target.display()));
+        .unwrap_or_else(|_| panic!("Error: cannot get metadata of  file {}", &target.display()));
+    let source_modified = source_file.modified().unwrap_or_else(|_| panic!("ERROR: cannot find created datetime for {}", &source.display()));
+    let target_modified = target_file.modified().unwrap_or_else(|_| panic!("ERROR: cannot find created datetime for {}", &target.display()));
 
-    source_file.len() == target_file.len() && source_created == target_created
+    source_file.len() == target_file.len() && source_modified == target_modified
 }
