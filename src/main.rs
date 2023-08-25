@@ -74,15 +74,29 @@ fn main() {
 }
 
 fn display_backup_result(results: Vec<Result<BackupSuccess, BackupFailure>>) {
-    let mut success: Vec<BackupSuccess> = Vec::new();
+    let mut nb_copy_exif: u32 = 0;
+    let mut nb_copy_filesystem: u32 = 0;
+    let mut nb_duplicates: u32 = 0;
     let mut failures: Vec<BackupFailure> = Vec::new();
     results.into_iter().for_each(|e| match e {
-        Ok(s) => success.push(s),
+        Ok(s) => {
+            match s {
+                BackupSuccess::AlreadyBackup(_) => nb_duplicates +=1,
+                BackupSuccess::Backup(_, origin) => match origin {
+                    PictureDatetimeOrigin::Exif => nb_copy_exif +=1,
+                    PictureDatetimeOrigin::FilesystemMetadata => nb_copy_filesystem +=1
+                }
+            }
+        },
         Err(f) => failures.push(f)
     });
     eprintln!("Backup Statistics:");
-    eprintln!("");
-    eprintln!("Success: {}", success.len());
+    eprintln!("==================");
+    eprintln!("Duplicates: {}", nb_duplicates);
+    eprintln!("Copied: {}", nb_copy_exif + nb_copy_filesystem);
+    eprintln!("To classify these newly copied files, we used:");
+    eprintln!("   {}: EXIF metadata", nb_copy_exif);
+    eprintln!("   {}: filesystem metadata", nb_copy_filesystem);
     eprintln!("Failures: {}", failures.len());
     if failures.len() != 0 {
         eprintln!("");
@@ -111,10 +125,8 @@ fn backup_file(cli: &CliArgs, file_path: &str) -> Result<BackupSuccess, BackupFa
             Ok(_) => Ok(BackupSuccess::Backup(
                 target_filename.into_os_string().into_string().unwrap(),
                 origin)),
-            Err(_) => {
-                eprintln!("ERROR: cannot copy {} to {}", &filename.display(), &target_filename.display());
-                Err(BackupFailure::CopyError(String::from(file_path)))
-            }
+            Err(_) => Err(BackupFailure::CopyError(String::from(file_path)))
+
         }
     } else if same_files(filename, &target_filename) {
         Ok(BackupSuccess::AlreadyBackup(String::from(file_path)))
