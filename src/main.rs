@@ -131,7 +131,7 @@ fn backup_file(cli: &CliArgs, file_path: &str) -> Result<BackupSuccess, BackupFa
     } else if same_files(filename, &target_filename) {
         Ok(BackupSuccess::AlreadyBackup(String::from(file_path)))
     } else {
-        Err(BackupFailure::AlreadyBackupButDifferent(String::from(file_path)))
+        Err(BackupFailure::AlreadyBackupButDifferent(format!("{} => {}", file_path, target_filename.display())))
     }
 }
 
