@@ -15,7 +15,8 @@ use rayon::prelude::*;
 struct CliArgs {
     /// Pictures library directory
     backup_root: String,
-    /// Picture to backup
+    /// Picture to backup. Alternatively, you can send a list of
+    /// pictures to backup via stdin.
     file_path: Option<String>,
 }
 

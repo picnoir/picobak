@@ -22,23 +22,10 @@ This program is heavily inspired by Shotwell's backup feature. I actually used t
 
 ## Usage
 
-Overall:
+Send the files you want to backup via stdin, then point picobak to the directory where you archive your pictures:
+
+E.G:
 
 ```txt
-Usage: pictures-backup [OPTIONS] <BACKUP_ROOT> <FILE_PATH>
-
-Arguments:
-  <BACKUP_ROOT>  Pictures library directory
-  <FILE_PATH>    Picture to backup
-
-Options:
-  -d, --dry-run  Do not create any directory or copy any file. Only prints out the operations it would perform
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-For instance:
-
-```txt
-ls dir-containing-pictures/* | picobak /my/pic-backup-root/
+ls /tmp/Sync2/* | picobak ~/nas/Photos-Video
 ```
