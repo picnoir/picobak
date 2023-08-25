@@ -9,7 +9,9 @@ repository = "https://git.alternativebit.fr/NinjaTrappeur/picobak"
 [dependencies]
 chrono = { version = "0.4.26", features = ["clock"] }
 clap = { version = "4.3.24", features = ["derive"] }
+indicatif = { version = "0.17.6", features = ["rayon"] }
 kamadak-exif = "0.5.5"
+rayon = "1.7.0"
 
 [profile.release]
 strip = true

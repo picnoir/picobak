@@ -37,8 +37,8 @@ Options:
   -V, --version  Print version
 ```
 
-You can couple this tool with [GNU parallel](https://www.gnu.org/software/parallel/) to concurently backup multiple images and fully utilize a multicore system:
+For instance:
 
 ```txt
-ls dir-containing-pictures | parallel -j $(nproc) picobak /my/pic-backup-root/
+ls dir-containing-pictures/* | picobak /my/pic-backup-root/
 ```
