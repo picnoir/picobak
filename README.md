@@ -18,7 +18,6 @@ Picobak is a small CLI utility to help you backup and organize your pictures on 
 (...)
 ```
 
-This program is heavily inspired by Shotwell's backup feature. I actually used that for years to organize my pictures. Sadly, it became more and more unstable along the years, it often fails midway-through the backup. Its implementation is too intimidating for me to try to fix and maintain it. In contrast, this utility is meant to stay small in terms of features scope and codebase. Nevertheless, Shotwell is a great program overall, kudos to the original authors, they have made my life simpler for years <3.
 
 ## Usage
 
@@ -26,6 +25,10 @@ Send the files you want to backup via stdin, then point picobak to the directory
 
 E.G:
 
-```txt
-ls /tmp/Sync2/* | picobak ~/nas/Photos-Video
+```sh
+find "/path/to/pictures/you/want/to/import/" -type f | picobak /your/pictures/library
 ```
+
+## Inspiration
+
+This program is heavily inspired by Shotwell's backup feature. I actually used that for years to organize my pictures. Sadly, it became more and more unstable along the years, it often fails midway-through the backup. Its implementation is too intimidating for me to try to fix and maintain it. In contrast, this utility is meant to stay small in terms of features scope and codebase. Nevertheless, Shotwell is a great program overall, kudos to the original authors, they have made my life simpler for years <3.
