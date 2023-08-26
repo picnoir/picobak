@@ -1,6 +1,6 @@
 # Picobak
 
-**WARNING:** this program hasn't properly been tested yet. Use with extreme caution. It might eat your kittens for now!!
+![Screencast shocasing a picture imports using picobak](./images/demo.gif)
 
 Picobak is a small CLI utility to help you backup and organize your pictures on a filesystem. It uses the pictures [EXIF](https://en.wikipedia.org/wiki/Exif) metadata to store the files in a `year/month/day` directory tree like this:
 
