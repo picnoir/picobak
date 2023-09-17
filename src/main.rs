@@ -1,4 +1,5 @@
 use std::fs::{create_dir_all, copy};
+use std::process::{Command};
 use std::{fs::File, path::PathBuf};
 use std::path::Path;
 use std::fmt;
@@ -9,6 +10,7 @@ use exif::{Tag, In, Value};
 use chrono::{Utc, DateTime, Datelike, NaiveDateTime};
 use indicatif::ParallelProgressIterator;
 use rayon::prelude::*;
+use serde::Deserialize;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -18,6 +20,13 @@ struct CliArgs {
     /// Picture to backup. Alternatively, you can send a list of
     /// pictures to backup via stdin.
     file_path: Option<String>,
+}
+
+/// Structure used to parse the JSON output of the exiftool program.
+#[derive(Debug, Deserialize)]
+struct ExifToolEntry {
+    #[serde(rename(deserialize = "CreateDate"))]
+    create_date: Option<String>
 }
 
 enum BackupSuccess {
@@ -33,6 +42,7 @@ enum BackupFailure {
 
 enum PictureDatetimeOrigin {
     Exif,
+    ExifTool,
     FilesystemMetadata
 }
 
@@ -76,6 +86,7 @@ fn main() {
 
 fn display_backup_result(results: Vec<Result<BackupSuccess, BackupFailure>>) {
     let mut nb_copy_exif: u32 = 0;
+    let mut nb_copy_exiftool: u32 = 0;
     let mut nb_copy_filesystem: u32 = 0;
     let mut nb_duplicates: u32 = 0;
     let mut failures: Vec<BackupFailure> = Vec::new();
@@ -85,6 +96,7 @@ fn display_backup_result(results: Vec<Result<BackupSuccess, BackupFailure>>) {
                 BackupSuccess::AlreadyBackup(_) => nb_duplicates +=1,
                 BackupSuccess::Backup(_, origin) => match origin {
                     PictureDatetimeOrigin::Exif => nb_copy_exif +=1,
+                    PictureDatetimeOrigin::ExifTool => nb_copy_exiftool +=1,
                     PictureDatetimeOrigin::FilesystemMetadata => nb_copy_filesystem +=1
                 }
             }
@@ -97,6 +109,7 @@ fn display_backup_result(results: Vec<Result<BackupSuccess, BackupFailure>>) {
     eprintln!("Copied: {}", nb_copy_exif + nb_copy_filesystem);
     eprintln!("To classify these newly copied files, we used:");
     eprintln!("   {}: EXIF metadata", nb_copy_exif);
+    eprintln!("   {}: the exiftool program", nb_copy_exiftool);
     eprintln!("   {}: filesystem metadata", nb_copy_filesystem);
     eprintln!("Failures: {}", failures.len());
     if failures.len() != 0 {
@@ -153,11 +166,14 @@ fn upsert_picture_directory(picture_dir: &PathBuf) {
 /// If no datetime EXIF data is attached to the file, use the file
 /// last modification date.
 fn get_picture_datetime(file_path: &str, file: &File) -> (DateTime<Utc>, PictureDatetimeOrigin) {
-    let exif_datetime = get_picture_exif_datetime(file);
-    match exif_datetime {
-        Some(dt) => (dt, PictureDatetimeOrigin::Exif),
-        None => (get_file_modified_time(file_path, file), PictureDatetimeOrigin::FilesystemMetadata)
-    }
+    // Try exif crate.
+    get_picture_exif_datetime(file).map(|dt| (dt, PictureDatetimeOrigin::Exif))
+        // Exif failed, shell out to exiftool.
+        .or_else(|| {
+                 get_picture_exiftool_datetime(file_path)
+                .map(|dt| (dt, PictureDatetimeOrigin::ExifTool))})
+        // Exiftool failed as well. Fallback to Unix datetime.
+        .unwrap_or((get_file_modified_time(file_path, file), PictureDatetimeOrigin::FilesystemMetadata))
 }
 
 /// Retrieves the picture EXIF datetime.
@@ -175,6 +191,29 @@ fn get_picture_exif_datetime(file: &File) -> Option<DateTime<Utc>> {
                 .ok()
         },
         _ => None
+    }
+}
+
+/// Shells out to the exiftool CLI. Despite its name, exiftool parses
+/// much more metadata than exif. Such as MOV metadata.
+fn get_picture_exiftool_datetime(file_path: &str) -> Option<DateTime<Utc>> {
+    let output = Command::new("exiftool")
+        .args(["-j", "-P", "-CreateDate", file_path])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None
+    }
+    let stdout_str = String::from_utf8(output.stdout).ok()?;
+    let parsed_output: Vec<ExifToolEntry> = serde_json::from_str(&stdout_str).ok()?;
+    if parsed_output.len() != 1 {
+        None
+    } else {
+        let entry = parsed_output.get(0)?;
+        let date: &str = &entry.create_date.as_ref()?;
+        NaiveDateTime::parse_from_str(date, "%Y:%m:%d %H:%M:%S")
+            .map(|naive_datetime| DateTime::from_utc(naive_datetime, Utc))
+            .ok()
     }
 }
 
@@ -212,6 +251,16 @@ fn validate_args(args: &CliArgs) {
     if Path::new(&args.backup_root).is_file() {
         panic!("ERROR: {} is a file, not a valid backup dir", &args.backup_root);
     };
+
+    let exif_tool_in_path = Command::new("bash")
+        .args(["-c", "command exiftool"])
+        .output()
+        .ok()
+        .map(|e| e.status.success())
+        .unwrap();
+    if !exif_tool_in_path {
+        eprintln!("Exiftool doesn't seem to be present in $PATH. Install it if you want to be able to extract more pictures metadata");
+    }
 }
 
 /// Compare two files and check if they're the same. We're not really
