@@ -1,5 +1,5 @@
 use std::fs::{create_dir_all, copy};
-use std::process::{Command};
+use std::process::Command;
 use std::{fs::File, path::PathBuf};
 use std::path::Path;
 use std::fmt;
@@ -66,7 +66,6 @@ fn main() {
     let filepaths = match cli.file_path {
         Some(ref fp) => vec!(Ok(fp.to_string())),
         None => stdin.lines()
-            .into_iter()
             .map(|l| l.map_err(|_|BackupFailure::IncorrectFilename(String::from("Can't parse filename from stdin"))))
             .collect()
     };
@@ -112,9 +111,8 @@ fn display_backup_result(results: Vec<Result<BackupSuccess, BackupFailure>>) {
     eprintln!("   {}: the exiftool program", nb_copy_exiftool);
     eprintln!("   {}: filesystem metadata", nb_copy_filesystem);
     eprintln!("Failures: {}", failures.len());
-    if failures.len() != 0 {
-        eprintln!("");
-        eprintln!("WARNING: unable to backup some files:");
+    if !failures.is_empty() {
+        eprintln!("\nWARNING: unable to backup some files:");
         failures.iter().for_each(|f| eprintln!("{}", f));
     }
 }
@@ -123,7 +121,7 @@ fn display_backup_result(results: Vec<Result<BackupSuccess, BackupFailure>>) {
 fn backup_file(cli: &CliArgs, file_path: &str) -> Result<BackupSuccess, BackupFailure> {
     let filename = Path::new(file_path);
     let file = File::open(filename).map_err(
-        |e| BackupFailure::CopyError(format!("cannot open the {} file: {}", file_path, e.to_string()))
+        |e| BackupFailure::CopyError(format!("cannot open the {} file: {}", file_path, e))
     )?;
     let (datetime, origin) = get_picture_datetime(file_path, &file);
 
@@ -151,11 +149,11 @@ fn backup_file(cli: &CliArgs, file_path: &str) -> Result<BackupSuccess, BackupFa
 
 fn upsert_picture_directory(picture_dir: &PathBuf) {
     // Prevent concurrent directory creation by locking a mutex.
-    let _ = CREATE_DIR_MUTEX.lock();
+    let _lock = CREATE_DIR_MUTEX.lock();
     if !picture_dir.exists() {
-            create_dir_all(&picture_dir)
+            create_dir_all(picture_dir)
             .unwrap_or_else(
-                |e| panic!("ERROR: cannot create the backup directory {}: {}", &picture_dir.display(), e.to_string())
+                |e| panic!("ERROR: cannot create the backup directory {}: {}", &picture_dir.display(), e)
             );
     } else if !picture_dir.is_dir() {
         panic!("ERROR: {} already exists and is not a directory. Can't use it to store a picture.", &picture_dir.display())
@@ -209,8 +207,8 @@ fn get_picture_exiftool_datetime(file_path: &str) -> Option<DateTime<Utc>> {
     if parsed_output.len() != 1 {
         None
     } else {
-        let entry = parsed_output.get(0)?;
-        let date: &str = &entry.create_date.as_ref()?;
+        let entry = parsed_output.first()?;
+        let date: &str = entry.create_date.as_ref()?;
         NaiveDateTime::parse_from_str(date, "%Y:%m:%d %H:%M:%S")
             .map(|naive_datetime| DateTime::from_utc(naive_datetime, Utc))
             .ok()
