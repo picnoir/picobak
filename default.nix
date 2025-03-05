@@ -4,7 +4,8 @@ pkgs.rustPlatform.buildRustPackage {
   pname = "picobak";
   version = "0.1.0";
   src = lib.cleanSource ./.;
-  cargoHash = "sha256-W0SLjlrqONMdTXoOlMilEvza2WEIVaKUJRraGR//qsw=";
+  useFetchCargoVendor = true;
+  cargoHash = "sha256-VbFVExgC4t5dUs4R5kAe+vBGMlCIuMV+tIOFOBA1Baw=";
   meta = {
     description = "Backup and organize your pictures library";
   };
